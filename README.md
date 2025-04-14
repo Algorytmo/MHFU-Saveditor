@@ -1,13 +1,13 @@
 # MHFU-Saveditor
 Simple save editor for Monster Hunter Portable 2nd G
 
-This project is a save editor for Monster Hunter Portable 2nd G, designed to allow users to customize game save data, including editing money and inventory items. It is exclusively designed for Windows operating systems, and compatibility with other platforms is not currently supported. At present, the editor supports only the European version of the game (Monster Hunter Freedom Unite). Future updates will expand compatibility to include the American (NA) and Japanese (JP) versions.
+This project is a save editor for Monster Hunter Portable 2nd G, designed to allow users to customize game save data, including editing money and inventory items. It is exclusively designed for Windows operating systems, and compatibility with other platforms is not currently supported.
 
 **HOW IT WORKS**
 
 - Download and extract the main folder;
 - Copy the folder named **mhfu_saveditor** wherever you want;
-- Put your savedata folder inside (ULES01213) and launch the .exe;
+- Put your savedata folder inside (ULES01213/ULUS10391/ULJM05066) and launch the .exe;
 
 ![image](https://github.com/user-attachments/assets/14024f60-34af-483d-b7ef-288d5179fb2b)
 
@@ -32,4 +32,3 @@ This project is a save editor for Monster Hunter Portable 2nd G, designed to all
 
 **TO DO**
 - Develop an autonomous script that works independently, without requiring additional tools;
-- Add NA and JP support.
