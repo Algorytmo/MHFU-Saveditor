@@ -1,0 +1,239 @@
+# Monster Hunter Freedom Unite
+# Script to decrypt MHFU download quest file data
+#
+# Takes arguments:
+# arg1: game type (currently: MHP2G_JP, MHP2G_EU, MHP2G_US )
+#
+# MEMORY_FILE  - quest header for decrypting
+# MEMORY_FILE2 - quest body for decrypting
+# MEMORY_FILE3 - quest copy for SHA-1 hashing
+#
+# Written by HenryEx
+#
+# script for QuickBMS http://quickbms.aluigi.org
+################################################
+# Preparations
+
+QuickBMSver 0.6
+print "Setup..."
+
+#make sure the right file was opened
+  get FILENAME filename 0
+  get BASENAME basename 0
+  get FILEEXT extension 0
+  if FILEEXT != "mib"
+    print "Opened file "%FILENAME%" is not a .mib file! Exiting..."
+    CleanExit
+  endif
+  get FILESIZE asize 0
+  if FILESIZE < 0x20  # size of header, should be minimum to decrypt
+    print "Unexpected filesize: %FILESIZE%! Exiting..."
+    CleanExit
+  endif
+
+#setup virtual memory file for header & quest body
+  xmath DSIZE "FILESIZE - 32"
+  log MEMORY_FILE 0 0x20 0  # get header
+  log MEMORY_FILE2 0x20 DSIZE 0  # get quest body
+
+# Pre-allocate memory file for SHA-1
+  xmath TMP "DSIZE + 16"
+  log MEMORY_FILE3 0 0
+  putvarchr MEMORY_FILE3 TMP 0
+  log MEMORY_FILE3 0 0  # reset size & position
+
+# Set up default values and salts
+  set SHA1QSALT_EU string "Vd6gh8F30wA86Ex5"
+  set SHA1QSALT_JP string "37wyS2Jfc3x5w9oG"
+  set SHA1QSALT_3RD string "sR2Tf4eLAj8b3TH7"
+  set QKEY_DEFAULT0 long 0x1709
+  set QKEY_DEFAULT2 long 0x3DF3
+  set QKEY_DEFAULT4 long 0x747B
+  set QKEY_DEFAULT6 long 0xB381
+  set QKEY_MOD0 long 0xFF9D
+  set QKEY_MOD2 long 0xFFA9
+  set QKEY_MOD4 long 0xFFC7
+  set QKEY_MOD6 long 0xFFF1
+
+  if quickbms_arg1 == "MHP2G_JP"
+    set SHA1SALT string SHA1QSALT_JP
+  elif quickbms_arg1 == "MHP2G_EU"
+    set SHA1SALT string SHA1QSALT_EU
+  elif quickbms_arg1 == "MHP2G_US"
+    set SHA1SALT string SHA1QSALT_EU
+  elif quickbms_arg1 & "quickbms_arg"
+    print "Error: game type argument is missing! Exiting..."
+    CleanExit
+  else
+    print "Invalid game type %quickbms_arg1%! Exiting..."
+    CleanExit
+  endif
+
+################################################
+# Decrypt quest header
+
+print "Checking quest file header..."
+
+set OFFSET long 0
+
+# Get decryption keys and initialize them
+  for i = 0 < 4
+    math key = i
+    get QKEY[key] short MEMORY_FILE
+    if key == 0 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT0
+    elif key == 1 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT2
+    elif key == 2 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT4
+    elif key == 3 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT6
+    endif
+  next i
+
+# Decrypt quest header to read filesize
+  SavePos POS MEMORY_FILE  # get current file position
+  set DATA short 0  # init data variable
+  for i = 0 < 12  # header size is 0x18
+  # advance key first. uses different key for each short in 8 bytes, then repeats.
+    xmath key "i % 4"
+    if key == 0
+      math QKEY[key] u* QKEY_DEFAULT0
+      math QKEY[key] u% QKEY_MOD0
+    elif key == 1
+      math QKEY[key] u* QKEY_DEFAULT2
+      math QKEY[key] u% QKEY_MOD2
+    elif key == 2
+      math QKEY[key] u* QKEY_DEFAULT4
+      math QKEY[key] u% QKEY_MOD4
+    elif key == 3
+      math QKEY[key] u* QKEY_DEFAULT6
+      math QKEY[key] u% QKEY_MOD6
+    endif
+    math QKEY[key] & 0xFFFF
+
+    # decrypt data and advance position
+    getvarchr DATA MEMORY_FILE POS short
+    math DATA u^ QKEY[key]
+    putvarchr MEMORY_FILE POS DATA short
+    math POS + 2
+  next i
+
+# Get quest body size from header & compare with what we got
+  get QSIZE long MEMORY_FILE
+  if QSIZE != DSIZE
+    print "Error: internal quest size and real file size don't match!"
+  endif
+
+################################################
+# Decrypt quest body
+
+print "Unpacking quest data..."
+if DSIZE < 8  # We need this much to verify file
+  print "Error: quest data size is too small!"
+  CleanExit
+endif
+
+# Decrypt rest of quest to save as file & hash
+  SavePos POS MEMORY_FILE2  # get current file position (0)
+  xmath LOOP "DSIZE / 2"
+  set DATA short 0  # init data variable
+  for i = 0 < LOOP
+  # advance key first. uses different key for each short in 8 bytes, then repeats.
+    xmath key "i % 4"
+    if key == 0
+      math QKEY[key] u* QKEY_DEFAULT0
+      math QKEY[key] u% QKEY_MOD0
+    elif key == 1
+      math QKEY[key] u* QKEY_DEFAULT2
+      math QKEY[key] u% QKEY_MOD2
+    elif key == 2
+      math QKEY[key] u* QKEY_DEFAULT4
+      math QKEY[key] u% QKEY_MOD4
+    elif key == 3
+      math QKEY[key] u* QKEY_DEFAULT6
+      math QKEY[key] u% QKEY_MOD6
+    endif
+    math QKEY[key] & 0xFFFF
+
+    # decrypt data and advance position
+    getvarchr DATA MEMORY_FILE2 POS short
+    math DATA u^ QKEY[key]
+    putvarchr MEMORY_FILE2 POS DATA short
+    math POS + 2
+  next i
+
+# Check for MHFU quest magic
+  get QPOINTERA long MEMORY_FILE2
+  getdstring QMAGIC 4 MEMORY_FILE2
+  if QMAGIC != "2NDG"
+    print "Error: this is not a valid Monster Hunter Freedom Unite / Portable 2nd G quest file!"
+    CleanExit
+  endif
+
+/*  As long as i don't have a way to make quest titles filename-friendly, this is out
+# Get default language quest name for file name
+  math QPOINTERA + 0x14  # address of language pointer table
+  if QPOINTERA >= DSIZE
+    print "Error: quest data pointer out of bounds!"
+    CleanExit
+  endif
+  goto QPOINTERA MEMORY_FILE2
+  get QPOINTERB long MEMORY_FILE2
+  if QPOINTERB >= DSIZE
+    print "Error: quest language pointer out of bounds!"
+    CleanExit
+  endif
+  goto QPOINTERB MEMORY_FILE2
+  get QPOINTERLANG long MEMORY_FILE2
+  if QPOINTERLANG >= DSIZE
+    print "Error: language data pointer out of bounds!"
+    CleanExit
+  endif
+  goto QPOINTERLANG MEMORY_FILE2
+  get QPOINTERTITLE long MEMORY_FILE2
+  if QPOINTERTITLE >= DSIZE
+    print "Error: quest title pointer out of bounds!"
+    CleanExit
+  endif
+  goto QPOINTERTITLE MEMORY_FILE2
+  get QTITLE string MEMORY_FILE2
+*/
+
+################################################
+# Verify SHA-1 hash
+
+print "Verifying SHA-1 hash..."
+
+# make copy of quest body for use with salt
+  log MEMORY_FILE3 0 DSIZE MEMORY_FILE2
+  append
+  log MEMORY_FILE3 0 0x10 MEMORY_FILE2  # add 16 bits to file for salt
+  append
+  goto DSIZE MEMORY_FILE3
+  putct SHA1SALT string -1 MEMORY_FILE3
+  get HSIZE asize MEMORY_FILE3
+  Encryption sha1 ""
+  log MEMORY_FILE3 0 HSIZE MEMORY_FILE3
+  Encryption "" ""
+
+# get stored hash and compare
+  goto 0xC MEMORY_FILE
+  getdstring QUESTSHA1 0x14 MEMORY_FILE
+  if QUICKBMS_HASH == QUESTSHA1
+    print "SHA-1 validated: %QUICKBMS_HEXHASH%"
+  else
+    print "Error: SHA-1 hashes don't match! Calculated: %QUICKBMS_HEXHASH%"
+  endif
+
+################################################
+# Save decrypted body to disk
+
+print "Exporting unpacked quest..."
+string NAME = BASENAME
+# string NAME = QTITLE  # Alternative, not functional.
+string NAME + ".bin"
+log NAME 0 DSIZE MEMORY_FILE2
+
+CleanExit
+

@@ -1,0 +1,212 @@
+# Monster Hunter Freedom Unite (PSP) et al
+# Script to download Monster Hunter Portable quest files from CAPCOM.
+#
+# Takes arguments:
+# arg1: game type (currently: MHP1, MHP2_JP, MHP2_EU, MHP2_US,
+#                             MHP2G_JP, MHP2G_EU, MHP2G_US, MHP3_JP )
+# arg2: file path to download (e.g. QUEST/m60038.mib)
+#
+# Written by HenryEx
+#
+# script for QuickBMS http://quickbms.aluigi.org
+
+################################################
+# Preparations
+
+QuickBMSver 0.6
+print "Setup..."
+
+# Load various game constants
+  set URI_3RD string "http://crusader.capcom.co.jp/psp/MHP3rd/"
+  set URI_2GJP string "http://viper.capcom.co.jp/psp/MHP2G/"
+  set URI_2GEU string "http://viper.capcom.co.jp/psp/MHP2GPAL/"
+  set URI_2GUS string "http://viper.capcom.co.jp/psp/MHP2GUSA/"
+  set URI_2JP string "http://skyhawk.capcom.co.jp/psp/MHP2/"
+  set URI_2EU string "http://skyhawk.capcom.co.jp/psp/MHP2PAL/"
+  set URI_2US string "http://skyhawk.capcom.co.jp/psp/MHP2USA/"
+  set URI_1 string "http://corsair.capcom.co.jp/psp/MHPSP/"
+
+  set AGENT_3RD string "Capcom Portable Browser v1.4 for MonsterHunterPortable3rd"
+  set AGENT_2GJP string "Capcom Portable Browser v1.3 for MH_Portable_2nd_G"
+  set AGENT_2GEU string "Capcom Portable Browser v1.3 for MH_Portable_2nd_G"
+  set AGENT_2GUS string "Capcom Portable Browser v1.3 for MH_Portable_2nd_G"
+  set AGENT_2JP string "Capcom Portable Browser v1.2 for MH2nd_Portable"
+  set AGENT_2EU string "Capcom Portable Browser v1.2 for MH2nd_Portable"
+  set AGENT_2US string "Capcom Portable Browser v1.2 for MH2nd_Portable"
+  set AGENT_1 string "Capcom Portable Browser v1.0 for MH_Portable"
+
+  set REF_QUEST string "DL_MENU.PHP"
+  set REF_CQUEST string "DL_CMENU.PHP"
+  set REF_OTOMO string "DL_OTOMO.PHP"
+  set REF_BONUS string "DL_BONUS.PHP"
+  set REF_NOSSL_QUEST string "NOSSL/DL_MENU1.HTM"
+
+# http methods: send method + uri + http
+  set GET_M string "GET "
+  set HEAD_M string "HEAD "
+  set POST_M string "POST "
+  set PUT_M string "PUT "
+  set DELETE_M string "DELETE "
+  set TRACE_M string "TRACE "
+  set OPTIONS_M string "OPTIONS "
+  set CONNECT_M string "CONNECT "
+  set HTTP string " HTTP/1.1"
+
+# prepare request headers
+  set HOST string "Host: "
+  set AGENT string "User-Agent: "
+  set REF string "Referer: "
+
+# check script argument 1 & prepare request lines
+  if quickbms_arg1 == "MHP1"
+    set URI string URI_1
+    string AGENT + AGENT_1
+  elif quickbms_arg1 == "MHP2_JP"
+    set URI string URI_2JP
+    string AGENT + AGENT_2JP
+  elif quickbms_arg1 == "MHP2_EU"
+    set URI string URI_2EU
+    string AGENT + AGENT_2EU
+  elif quickbms_arg1 == "MHP2_US"
+    set URI string URI_2US
+    string AGENT + AGENT_2US
+  elif quickbms_arg1 == "MHP2G_JP"
+    set URI string URI_2GJP
+    string AGENT + AGENT_2GJP
+  elif quickbms_arg1 == "MHP2G_EU"
+    set URI string URI_2GEU
+    string AGENT + AGENT_2GEU
+  elif quickbms_arg1 == "MHP2G_US"
+    set URI string URI_2GUS
+    string AGENT + AGENT_2GUS
+  elif quickbms_arg1 == "MHP3_JP"
+    set URI string URI_3RD
+    string AGENT + AGENT_3RD
+  elif quickbms_arg1 & "quickbms_arg"
+    print "No game type specified! Exiting..."
+    CleanExit
+  else
+    print "Invalid game type %quickbms_arg1%! Exiting..."
+    CleanExit
+  endif
+
+# check script argument 2 & set file
+  if quickbms_arg2 ext "mib" || quickbms_arg2 ext "PHP"
+    string TARGET = quickbms_arg2
+    string FILENAME = TARGET
+    string FILENAME ! "/"  # get string after the last /
+  elif quickbms_arg2 & "quickbms_arg2"
+    print "Invalid or missing target argument: %quickbms_arg2%! Exiting..."
+    CleanExit
+  else
+    print "Target '%quickbms_arg2%' is not a quest or PHP file! Exiting..."
+    CleanExit
+  endif
+
+# set up target tcp address from URI
+  set TCP string "tcp://"
+  string TMP = URI
+  string TMP < 7       # removes http:// from start of string
+  string TMP > "/psp"  # cut down to domain name
+  string HOST + TMP    # set Host header
+  string TCP + TMP
+  string TCP + ":80"   # http port
+
+# set up http method & URI
+  string METHOD = GET_M
+  string METHOD + URI
+  string METHOD + TARGET
+  string METHOD + HTTP
+  string REF + URI
+
+# set up referer if neccessary
+  string TMP = TARGET
+  if TARGET & "NOSSL/QUEST/"
+    string REF + REF_NOSSL_QUEST
+  elif TARGET & "QUEST/"
+    string REF + REF_QUEST
+  elif TARGET & "OTOMO/"
+    string REF + REF_OTOMO
+  elif TARGET & "BONUS/"
+    string REF + REF_BONUS
+  endif
+
+################################################
+# Establish connection and make request
+
+print "Connecting..."
+
+Open "." TCP
+put METHOD line
+put HOST line
+put AGENT line
+put REF line
+put "" line
+
+# retrieve & parse response header
+log MEMORY_FILE2 0 0
+for i = 0 < 1
+  get DATA line
+  put DATA line MEMORY_FILE2
+  if DATA == "HTTP/1.1 200 OK"
+    string DATA | "HTTP/1.1 "
+    set STATUS string DATA
+  elif DATA == "Transfer-Encoding: chunked"  # set up chunked reception
+    string CHUNKED = "True"
+  elif DATA & "Content-Length: "  # file size of response
+    string DATA | "Content-Length: "  # get content length
+    math SIZE = DATA
+  elif DATA & "Content-Type: " && DATA & "text/html"
+    string HTMLFILE = "True"
+  elif DATA == ""  # end of response header
+    math i = 1
+  endif
+next
+
+if STATUS != "200 OK"  # server response didn't return OK
+  print "Unexpected server response: %STATUS%! Saving response header and exiting..."
+  get RSIZE asize MEMORY_FILE2
+  log "response_header.txt" 0 RSIZE MEMORY_FILE2
+  CleanExit
+elif CHUNKED == "True"
+  print "Error: chunked transfer encoding not yet implemented. Exiting..."
+  CleanExit
+endif
+
+print "Downloading..."
+
+# file retrieval
+log MEMORY_FILE 0 0
+for j = 0 < 1
+  if CHUNKED == "True"
+    get CHUNK line
+    if CHUNK == 0
+      math j = 1  # last loop
+    endif
+  else
+    math j = 1  # first and last loop
+  endif
+
+  if HTMLFILE == "True"  # html retrieval
+    for i = 0 < 2
+      get DATA line
+      if DATA == "</html>"   # don't read past </html> tag
+        math i = 2
+      elif DATA == "<html>"  # only read past <html> tag
+        math i = 1
+      endif
+      if i > 0
+        put DATA line MEMORY_FILE
+      endif
+    next
+  else  # file retrieval
+    for i = 0 < SIZE
+      get DATA byte
+      put DATA byte MEMORY_FILE
+    next i
+  endif
+next
+
+get SIZE asize MEMORY_FILE
+log FILENAME 0 SIZE MEMORY_FILE
+print "Finished downloading %FILENAME%!"

@@ -1,0 +1,298 @@
+# Monster Hunter Freedom Unite (PSP)
+# Script to decrypt and extract save file data
+#
+# Requires the file 'MHFUdic_de.bin' at output location!
+#
+# Takes arguments:
+# arg1: game type (currently: MHP2G_JP, MHP2G_EU, MHP2G_US)
+#
+# MEMORY_FILE  - decrypting copy of save file
+# MEMORY_FILE2 - decrypting copy of save key
+# MEMORY_FILE3 - save copy for SHA-1 hashing
+# MEMORY_FILE4 - temporary quest copy for decryption
+# MEMORY_FILE5 - questblock.sav for cleaning quests
+# MEMORY_FILE6 - builds questlist.txt
+#
+# Written by HenryEx
+# revision 4
+#
+# script for QuickBMS http://quickbms.aluigi.org
+
+################################################
+# Preparations
+
+QuickBMSver 0.6
+print "Setup..."
+
+#make sure the right file was opened
+  get FILENAME filename 0
+  if FILENAME != "MHP2NDG.bin"
+    print "Opened the wrong file: %FILENAME%! Exiting..."
+    CleanExit
+  endif
+  get FILESIZE asize 0
+  if FILESIZE == 0x16A110
+    print "Warning! Savegame sems to still be PSP-encrypted! Exiting..."
+    CleanExit
+  elif FILESIZE != 0x16A100
+    print "Unexpected filesize: %FILESIZE%! Exiting..."
+    CleanExit
+  endif
+
+#Check if file seems to be plain
+  get LANG byte 0
+  get AUDIO byte 0
+  get MUSIC byte 0
+  get SFX byte 0
+  if LANG < 7 && AUDIO < 4 && MUSIC < 8 && SFX < 8
+    print "File seems to be unencrypted! Exiting..."
+    CleanExit
+  endif
+
+#setup virtual memory file for save data
+  math TMP = 0x16A100
+  log MEMORY_FILE 0 0
+  putvarchr MEMORY_FILE TMP 0   # improves the speed with pre-allocation
+  log MEMORY_FILE 0 0           # reset the position and size of the file
+
+# load charset cipher dictionaries and store in arrays
+# note: value MUST be accessed with SAVEDEC[sub] and SAVEENC[sub]!
+  Open "." "MHFUdic_de.bin" 10
+# Open "." "MHFUdic_en.bin" 11
+  for sub = 0 < 256
+    get SAVEDEC[sub] byte 10
+#   get SAVEENC[sub] byte 11
+  next sub
+
+# Set up default values and salts
+  set SHA1SALT_EU string "3Nc94Hq1zOLh8d62Sb69"
+  set SHA1SALT_JP string "S)R?Bf8xW3#5h9lGU8wR"
+  set SHA1SALT_3RD string "VQ(DOdIO9?X3!2GmW#XF"
+  set KEY_LOWDEFAULT long 0x215F
+  set KEY_HIGHDEFAULT long 0xDFA3
+  set KEY_LOWMOD long 0xFF8F
+  set KEY_HIGHMOD long 0xFFEF
+  set QKEY_DEFAULT0 long 0x1709
+  set QKEY_DEFAULT2 long 0x3DF3
+  set QKEY_DEFAULT4 long 0x747B
+  set QKEY_DEFAULT6 long 0xB381
+  set QKEY_MOD0 long 0xFF9D
+  set QKEY_MOD2 long 0xFFA9
+  set QKEY_MOD4 long 0xFFC7
+  set QKEY_MOD6 long 0xFFF1
+
+# get arg1: game region
+  if quickbms_arg1 == "MHP2G_JP"
+    set SHA1SALT string SHA1SALT_JP
+  elif quickbms_arg1 == "MHP2G_EU"
+    set SHA1SALT string SHA1SALT_EU
+  elif quickbms_arg1 == "MHP2G_US"
+    set SHA1SALT string SHA1SALT_EU
+  elif quickbms_arg1 & "quickbms_arg"  # no argument was passed
+    print "Missing argument: game region! Exiting..."
+    CleanExit
+  else
+    print "Invalid game type %quickbms_arg1%! Exiting..."
+    CleanExit
+  endif
+
+# get savedata & key in memory for decryption
+  log MEMORY_FILE 0 0x16A0FC 0  # MEMORY_FILE is encrypted save data minus key
+  log MEMORY_FILE2 0x16A0FC 4 0  # MEMORY_FILE2 houses key
+
+
+################################################
+# Decrypt save
+
+print "Decrypting save..."
+
+# get encryption key & make plain by 2x substitution table
+  for i = 0 < 4
+    getvarchr sub MEMORY_FILE2 i  # read byte value from MF2 into sub
+    math PLAIN = SAVEDEC[sub]  # get PLAIN number from table
+    putvarchr MEMORY_FILE2 i PLAIN  # write back to MF2
+  next i
+  for i = 0 < 4
+    getvarchr sub MEMORY_FILE2 i  # read byte value from MF2 into sub
+    math PLAIN = SAVEDEC[sub]  # get PLAIN number from table
+    putvarchr MEMORY_FILE2 i PLAIN  # write back to MF2
+  next i
+  get SKEY long MEMORY_FILE2  # get plain key
+
+# initialize key
+  set LOKEY long SKEY
+  set HIKEY long SKEY
+  math LOKEY & 0xFFFF  # get low 16 bits
+  math HIKEY u> 16  # get high 16 bits
+  if HIKEY == 0
+    math HIKEY = KEY_HIGHDEFAULT
+  elif LOKEY == 0
+    math LOKEY = KEY_LOWDEFAULT
+    math HIKEY = KEY_HIGHDEFAULT
+  endif
+  math HIKEY u< 16  # shift up again
+  math SKEY = HIKEY
+  math SKEY u+ LOKEY  #combine key again
+
+# decrypt rest of save
+  # Put file through substitution table
+    for i = 0 < 0x16A0FC
+      getvarchr sub MEMORY_FILE i
+      math PLAIN = SAVEDEC[sub]
+      putvarchr MEMORY_FILE i PLAIN
+    next i
+
+  # advance key and XOR 32b blocks of the file with it
+    for i = 0 < 370751  # filelength / 4
+      xmath POS "i * 4"  # get current file position
+
+      # advance key
+      set LOKEY long SKEY
+      set HIKEY long SKEY
+      math LOKEY & 0xFFFF  # get low 16 bits
+      math LOKEY u* KEY_LOWDEFAULT
+      math LOKEY u% KEY_LOWMOD
+      math HIKEY u> 16  # get high 16 bits
+      math HIKEY u* KEY_HIGHDEFAULT
+      math HIKEY u% KEY_HIGHMOD
+      math HIKEY u< 16  # shift up again
+      math SKEY u= HIKEY
+      math SKEY u+ LOKEY  #combine key again
+
+      # XOR data with key
+      getvarchr DATA MEMORY_FILE POS long
+      math DATA u^ SKEY
+      putvarchr MEMORY_FILE POS DATA long
+    next i
+
+  # Put file through substitution table again
+    for i = 0 < 0x16A0FC
+      getvarchr sub MEMORY_FILE i
+      math PLAIN = SAVEDEC[sub]
+      putvarchr MEMORY_FILE i PLAIN
+    next i
+
+################################################
+# Verify SHA-1 hash
+
+print "Verifying SHA-1 hash..."
+
+# make copy of save for use with salt
+  log MEMORY_FILE3 0 0x16A0DC MEMORY_FILE
+  goto 0x16A0DC MEMORY_FILE3
+  putct SHA1SALT string -1 MEMORY_FILE3
+  Encryption sha1 ""
+  log MEMORY_FILE3 0 0x16A0F0 MEMORY_FILE3
+  Encryption "" ""
+
+# get stored hash and compare
+  goto 0x16A0E8 MEMORY_FILE
+  getdstring SAVESHA1 0x14 MEMORY_FILE
+  if QUICKBMS_HASH == SAVESHA1
+    print "SHA-1 validated: %QUICKBMS_HEXHASH%"
+  else
+    print "SHA-1 hashes don't match! Calculated: %QUICKBMS_HEXHASH%"
+  endif
+
+################################################
+# Process download quests; loop  through 6 files
+
+log MEMORY_FILE5 0x142300 0x27060 MEMORY_FILE  # get questblock.sav to work on
+log MEMORY_FILE6 0 0  # for a text list of exported quest files
+set OFFSET long 0
+
+for q = 1 < 7
+  log MEMORY_FILE4 OFFSET 0x6810 MEMORY_FILE5
+  goto 0x6800 MEMORY_FILE4  # file name position
+  getdstring QNAME 0x10 MEMORY_FILE4
+  if QNAME != ""
+
+    print "Fetching saved quest file #%q%: %QNAME%"
+    put QNAME line MEMORY_FILE6
+    goto 0 MEMORY_FILE4
+
+  # Get decryption keys and initialize them
+    for i = 0 < 4
+      math key = i
+      get QKEY[key] short MEMORY_FILE4
+      if key == 0 && QKEY[key] == 0
+        math QKEY[key] = QKEY_DEFAULT0
+      elif key == 1 && QKEY[key] == 0
+        math QKEY[key] = QKEY_DEFAULT2
+      elif key == 2 && QKEY[key] == 0
+        math QKEY[key] = QKEY_DEFAULT4
+      elif key == 3 && QKEY[key] == 0
+        math QKEY[key] = QKEY_DEFAULT6
+      endif
+    next i
+
+  # Decrypt quest header to read filesize
+    SavePos POS MEMORY_FILE4  # get current file position
+    set DATA short 0  # reset variable from earlier
+    for i = 0 < 12  # header size is 0x18
+    # advance key first. uses different key for each short in 8 bytes, then repeats.
+      xmath key "i % 4"
+      if key == 0
+        math QKEY[key] u* QKEY_DEFAULT0
+        math QKEY[key] u% QKEY_MOD0
+      elif key == 1
+        math QKEY[key] u* QKEY_DEFAULT2
+        math QKEY[key] u% QKEY_MOD2
+      elif key == 2
+        math QKEY[key] u* QKEY_DEFAULT4
+        math QKEY[key] u% QKEY_MOD4
+      elif key == 3
+        math QKEY[key] u* QKEY_DEFAULT6
+        math QKEY[key] u% QKEY_MOD6
+      endif
+      math QKEY[key] & 0xFFFF
+
+      # decrypt data and advance position
+      getvarchr DATA MEMORY_FILE4 POS short
+      math DATA u^ QKEY[key]
+      putvarchr MEMORY_FILE4 POS DATA short
+      math POS + 2
+    next i
+
+  # We did all this for the file size, so let's get it & log the file
+    get QSIZE long MEMORY_FILE4
+    math QSIZE + 0x20  # add size of the header
+    log QNAME OFFSET QSIZE MEMORY_FILE5  # get fresh undecrypted quest and dump it
+
+  # remove extracted quest from questblock.sav
+    for i = 0 < QSIZE
+      xmath QOFF "OFFSET + i"
+      putvarchr MEMORY_FILE5 QOFF 0  # fill quest with 00
+    next i
+    for i = 0 < 0x10
+      xmath QOFF "OFFSET + 0x6800 + i"
+      putvarchr MEMORY_FILE5 QOFF 0  # fill name with 00
+    next i
+
+  else
+    print "Quest %q% doesn't exist! Skipping..."
+  endif
+  math OFFSET + 0x6810  # offset for next file
+next q
+
+# this is a hilariously stupid workaround because EOF is recognized as a var instead of a string
+string END = "EO"
+string END + "F"
+put END line MEMORY_FILE6  # end of list
+get LISTSIZE asize MEMORY_FILE6
+
+################################################
+# Save files to disk
+
+print "Exporting decrypted save file parts..."
+log "settings.sav" 0 0x1000 MEMORY_FILE
+log "character1.sav" 0x1000 0x6B100 MEMORY_FILE
+log "character2.sav" 0x6C100 0x6B100 MEMORY_FILE
+log "character3.sav" 0xD7200 0x6B100 MEMORY_FILE
+log "questblock.sav" 0 0x27060 MEMORY_FILE5  # cleaned copy
+log "footer.sav" 0x169360 0xD88 MEMORY_FILE
+log "sha-1.bin" 0x16A0E8 0x14 MEMORY_FILE
+log "savekey.bin" 0 4 MEMORY_FILE2  # plain key
+log "questlist.txt" 0 LISTSIZE MEMORY_FILE6  # list of exported quest file names
+
+CleanExit

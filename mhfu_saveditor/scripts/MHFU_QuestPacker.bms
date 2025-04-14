@@ -1,0 +1,238 @@
+# Monster Hunter Freedom Unite
+# Script to encrypt MHFU download quest file data
+#
+# Takes arguments:
+# arg1: game type (currently: MHP2G_JP, MHP2G_EU, MHP2G_US )
+#
+# MEMORY_FILE  - encrypting the quest file
+# MEMORY_FILE2 - assembling the header
+# MEMORY_FILE3 - quest copy for SHA-1 hashing
+#
+# Written by HenryEx
+#
+# script for QuickBMS http://quickbms.aluigi.org
+################################################
+# Preparations
+
+QuickBMSver 0.6
+print "Setup..."
+
+get FILENAME filename 0
+string FILENAME = FILENAME
+get BASENAME basename 0
+get FILEEXT extension 0
+get FSIZE asize 0
+if FSIZE < 12
+  print "Error: file too small! Not a valid quest."
+  CleanExit
+endif
+
+#recognize type of file that was opened
+  if FILEEXT == "bin" || FILEEXT == "mem"
+    set PAT long 0  # .pat file read offset
+    math QSIZE = FSIZE
+    get QPOINTERA long 0
+    getdstring QMAGIC 4 0
+    if QMAGIC != "2NDG"
+      print "Error: this is not a valid Monster Hunter Freedom Unite / Portable 2nd G quest file!"
+      CleanExit
+    endif
+  elif FILEEXT == "pat"
+    set PAT long 4  # .pat file read offset
+    xmath QSIZE "FSIZE - 4"
+    get QMEMADDRESS long 0
+    get QPOINTERA long 0
+    getdstring QMAGIC 4 0
+    if QMAGIC != "2NDG"
+      print "Error: this is not a valid Monster Hunter Freedom Unite / Portable 2nd G quest file!"
+      CleanExit
+    endif
+  else
+      print "Error: unrecognized format! Make sure your quest is a .bin, .mem or .pat file!"
+      CleanExit
+  endif
+  xmath SIZE "QSIZE + 0x20"  # final file size
+
+#setup virtual memory files
+  log MEMORY_FILE 0 0   # for encrypting quest data
+  log MEMORY_FILE2 0 0  # for assembling header
+  log MEMORY_FILE3 0 0  # for hashing with salt
+  math TMP = SIZE
+  putvarchr MEMORY_FILE TMP 0
+  math TMP = 0x20
+  putvarchr MEMORY_FILE2 TMP 0
+  xmath TMP "QSIZE + 16"
+  putvarchr MEMORY_FILE3 TMP 0
+  log MEMORY_FILE 0 0
+  log MEMORY_FILE2 0 0
+  log MEMORY_FILE3 0 0
+
+# Set up default values and salts
+  set SHA1QSALT_EU string "Vd6gh8F30wA86Ex5"
+  set SHA1QSALT_JP string "37wyS2Jfc3x5w9oG"
+  set SHA1QSALT_3RD string "sR2Tf4eLAj8b3TH7"
+  set QKEY_DEFAULT0 long 0x1709
+  set QKEY_DEFAULT2 long 0x3DF3
+  set QKEY_DEFAULT4 long 0x747B
+  set QKEY_DEFAULT6 long 0xB381
+  set QKEY_MOD0 long 0xFF9D
+  set QKEY_MOD2 long 0xFFA9
+  set QKEY_MOD4 long 0xFFC7
+  set QKEY_MOD6 long 0xFFF1
+  set REGION string "none"
+
+  if quickbms_arg1 == "MHP2G_JP"
+    set SHA1SALT string SHA1QSALT_JP
+    string REGION = "[JP]"
+  elif quickbms_arg1 == "MHP2G_EU"
+    set SHA1SALT string SHA1QSALT_EU
+    string REGION = "[EU]"
+  elif quickbms_arg1 == "MHP2G_US"
+    set SHA1SALT string SHA1QSALT_EU
+    string REGION = "[US]"
+  elif quickbms_arg1 & "quickbms_arg"
+    print "Error: game type argument is missing! Exiting..."
+    CleanExit
+  else
+    print "Invalid game type %quickbms_arg1%! Exiting..."
+    CleanExit
+  endif
+
+################################################
+# Make SHA-1 hash
+
+print "Calculating SHA-1 hash..."
+
+# make copy of quest body for use with salt
+  log MEMORY_FILE3 PAT QSIZE 0
+  append
+  log MEMORY_FILE3 0 0x10 0  # add 16 bits to file for salt
+  append
+  goto QSIZE MEMORY_FILE3
+  putct SHA1SALT string -1 MEMORY_FILE3
+  get HSIZE asize MEMORY_FILE3
+  Encryption sha1 ""
+  log MEMORY_FILE3 0 HSIZE MEMORY_FILE3
+  Encryption "" ""
+
+# print calculated hash, store later when assembling header
+  set QUESTSHA1 QUICKBMS_HASH
+  print "SHA-1 calculated: %QUICKBMS_HEXHASH%"
+
+################################################
+# Make quest header for encryption
+
+print "Building quest file header..."
+
+math SEED = FSIZE  # seed random keys from filesize
+math SEED & 0xFFFF  # limit to 2 bytes
+
+# Put 'random' keys, quest size & SHA1 into header
+  xmath TMP "SEED ^ 25928"  # "He"
+  put TMP short MEMORY_FILE
+  put TMP short MEMORY_FILE2
+  xmath TMP "SEED ^ 29294"  # "nr"
+  put TMP short MEMORY_FILE
+  put TMP short MEMORY_FILE2
+  xmath TMP "SEED ^ 17785"  # "yE"
+  put TMP short MEMORY_FILE
+  put TMP short MEMORY_FILE2
+  xmath TMP "SEED ^ 8568"   # "x!"
+  put TMP short MEMORY_FILE
+  put TMP short MEMORY_FILE2
+  put QSIZE long MEMORY_FILE2
+  putct QUESTSHA1 string -1 MEMORY_FILE2
+
+# Get keys for encryption and initialize
+  goto 0 MEMORY_FILE2
+  for i = 0 < 4
+    math key = i
+    get QKEY[key] short MEMORY_FILE2
+    if key == 0 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT0
+    elif key == 1 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT2
+    elif key == 2 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT4
+    elif key == 3 && QKEY[key] == 0
+      math QKEY[key] = QKEY_DEFAULT6
+    endif
+  next i
+
+# Encrypt quest header
+  set DATA short 0  # init data variable
+  for i = 0 < 12  # header size is 0x18
+  # advance key first. uses different key for each short in 8 bytes, then repeats.
+    xmath key "i % 4"
+    if key == 0
+      math QKEY[key] u* QKEY_DEFAULT0
+      math QKEY[key] u% QKEY_MOD0
+    elif key == 1
+      math QKEY[key] u* QKEY_DEFAULT2
+      math QKEY[key] u% QKEY_MOD2
+    elif key == 2
+      math QKEY[key] u* QKEY_DEFAULT4
+      math QKEY[key] u% QKEY_MOD4
+    elif key == 3
+      math QKEY[key] u* QKEY_DEFAULT6
+      math QKEY[key] u% QKEY_MOD6
+    endif
+    math QKEY[key] & 0xFFFF
+
+    # encrypt data & put into memory file 1
+    get DATA short MEMORY_FILE2
+    math DATA u^ QKEY[key]
+    put DATA short MEMORY_FILE
+  next i
+
+################################################
+# Encrypt quest body
+
+print "Packing quest file..."
+
+# Encrypt opened quest file into memory file
+  goto PAT 0  # skip to .pat offset in opened file
+  xmath LOOP "QSIZE / 2"
+  set DATA short 0
+  for i = 0 < LOOP
+  # advance key first. uses different key for each short in 8 bytes, then repeats.
+    xmath key "i % 4"
+    if key == 0
+      math QKEY[key] u* QKEY_DEFAULT0
+      math QKEY[key] u% QKEY_MOD0
+    elif key == 1
+      math QKEY[key] u* QKEY_DEFAULT2
+      math QKEY[key] u% QKEY_MOD2
+    elif key == 2
+      math QKEY[key] u* QKEY_DEFAULT4
+      math QKEY[key] u% QKEY_MOD4
+    elif key == 3
+      math QKEY[key] u* QKEY_DEFAULT6
+      math QKEY[key] u% QKEY_MOD6
+    endif
+    math QKEY[key] & 0xFFFF
+
+    # encrypt data & put into memory file 1
+    get DATA short 0
+    math DATA u^ QKEY[key]
+    put DATA short MEMORY_FILE
+  next i
+
+get TMP asize MEMORY_FILE
+if TMP != SIZE
+  print "Error: Unexpected filesize %TMP%! (Expected was %SIZE%)"
+  CleanExit
+endif
+
+################################################
+# Save encrypted quest file to disk
+
+print "Saving packed quest to disk..."
+string NAME = BASENAME
+if REGION != "none"
+  string NAME + REGION
+endif
+string NAME + ".mib"
+log NAME 0 SIZE MEMORY_FILE
+CleanExit
+

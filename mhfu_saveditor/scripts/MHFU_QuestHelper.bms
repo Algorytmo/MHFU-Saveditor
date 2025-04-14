@@ -1,0 +1,35 @@
+# Monster Hunter Freedom Unite Save Tools helper
+# Script to automatically write downloaded quests into questlist.txt
+#
+# Takes arguments:
+# arg1: Quest file name (e.g. m61014.mib)
+#
+# Written by HenryEx
+#
+# script for QuickBMS http://quickbms.aluigi.org
+
+################################################
+
+QuickBMSver 0.6
+
+# get script argument
+if quickbms_arg1 & "quickbms_arg"  # no argument?!?!
+  print "Missing argument: quest file! Exiting..."
+  CleanExit
+elif quickbms_arg1 ext "mib"  # This should happen
+  string QUEST = quickbms_arg1
+else  # What the hell got passed here?
+  print "Error: passed quest file %quickbms_arg1% is not a .mib file! Exiting..."
+  CleanExit
+endif
+
+log MEMORY_FILE 0 0
+put QUEST line MEMORY_FILE
+
+get FNAME filename
+get SIZE asize
+getdstring LIST SIZE
+
+putdstring LIST SIZE MEMORY_FILE
+get MSIZE asize MEMORY_FILE
+log FNAME 0 MSIZE MEMORY_FILE
