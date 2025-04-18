@@ -1303,7 +1303,6 @@ class Character:
 
     def read_name(self, offset, size):
         raw_data = self.data[offset:offset + size]
-        # Decodifica il nome, rimuovendo caratteri non stampabili e null terminator
         name = "".join(s for s in raw_data.decode("ascii", errors="ignore") if s.isprintable())
         return name.strip("\x00") if name else None
 
@@ -1329,11 +1328,10 @@ class Character:
         if Character.shared_db is None:
             with open(self.id_file, "r") as items:
                 items_dict = json.load(items)
-                #Character.shared_db = dict(sorted(items_dict["items"].items(), key=lambda item: item[1]))
                 Character.shared_db = items_dict
     
     def read_bag(self):
-        self.load_shared_db()  # Assicura che il database condiviso sia caricato
+        self.load_shared_db()
         data = []
         for i, (slot_offset, quantity_offset) in enumerate(self.bag_offsets, start=1):
             slot_item, slot_quantity = self.bag_items(slot_offset, quantity_offset)
@@ -1342,7 +1340,7 @@ class Character:
         return data
     
     def read_equip_chest(self):
-        self.load_shared_db()  # Assicura che il database condiviso sia caricato
+        self.load_shared_db()
         data = []
         for i, (index_offset, name_offset) in enumerate(self.equip_chest_offsets, start=1):
             index, name = self.equip_items(index_offset, name_offset)
@@ -1362,12 +1360,3 @@ class Character:
             item_name = Character.shared_db["items"].get(str(chest_item), "Unknown Item")
             data.append({"Slot": i, "Name": item_name, "Quantity": chest_quantity})
         return data
-
-
-# t = item_chest3
-# for x, y in t:
-#     print(f"({hex(x + 0x6b100)}, {hex(y + 0x6b100)}),")
-
-# for i in range(0, len(t), 5):
-#     chunk = t[i:i+5]
-#     print(", ".join([f"({hex(offset[0])}, {hex(offset[1])})" for offset in chunk]))
