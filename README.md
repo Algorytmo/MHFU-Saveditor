@@ -13,16 +13,15 @@ This project is a save editor for Monster Hunter Portable 2nd G, designed to all
 
 - After decrypting, you'll see a new window opening;
 
-![image](https://github.com/user-attachments/assets/9b2a6b37-f443-45c3-81b0-38c384b2e2a0)
+![image](https://github.com/user-attachments/assets/99d3a129-ebaf-4216-9376-d9c59a2864d8)
 
-- You can now see your money, bag items and quantity; 
+- You can now see your money, bag/chest items and chest equip; 
 - Clicking on button **Add Max Money**, money will be capped at 9999999;
 - Double click on item quantity to edit it (max 99);
 - Double click on item name (or in an empty slot) to choose another item;
-- When you're done, click on **Save Changes** button and confirm; the tool will pack everything and encrypt all again;
+- Double click on item type and after on item name (or in an empty slot) to change equipment;
+- When you're done, click on **Save Changes** button and confirm. The tool will pack everything and encrypt all again;
 - When all windows will close, put your new savedata again in memorystick folder and start the game.
-
-![gif1](https://github.com/user-attachments/assets/a26fa453-fc97-4586-b102-f868261bcc0e)
 
 **THANKS TO**
 
