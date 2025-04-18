@@ -1,204 +1,318 @@
-from tkinter import ttk, messagebox, simpledialog
-import tkinter as tk
-import struct
-import json
 import os
+import struct
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
+import offsets
 
 cwd = os.getcwd()
 root = tk.Tk()
 
-# File path & offset
-name_offset = 0x0
-sex_offset = 0x12
-money_offset = 0x69250
-bag_offsets = [
-    (0x3f28, 0x3f2a), (0x3f2c, 0x3f2e), (0x3f30, 0x3f32),
-    (0x3f34, 0x3f36), (0x3f38, 0x3f3a), (0x3f3c, 0x3f3e),
-    (0x3f40, 0x3f42), (0x3f44, 0x3f46), (0x3f48, 0x3f4a),
-    (0x3f4c, 0x3f4e), (0x3f50, 0x3f52), (0x3f54, 0x3f56),
-    (0x3f58, 0x3f5a), (0x3f5c, 0x3f5e), (0x3f60, 0x3f62),
-    (0x3f64, 0x3f66), (0x3f68, 0x3f6a), (0x3f6c, 0x3f6e),
-    (0x3f70, 0x3f72), (0x3f74, 0x3f76), (0x3f78, 0x3f7a),
-    (0x3f7c, 0x3f7e), (0x3f80, 0x3f82), (0x3f84, 0x3f86),
+characters_data = [
+    {
+        "name_offset": offsets.name_char1,
+        "sex_offset": offsets.sex_char1,
+        "money_offset": offsets.money_char1,
+        "bag_offsets": offsets.bag_char1,
+        "chest_item_offsets": offsets.item_chest1,
+        "equip_item_offsets": offsets.equip_chest1
+    },
+    {
+        "name_offset": offsets.name_char2,
+        "sex_offset": offsets.sex_char2,
+        "money_offset": offsets.money_char2,
+        "bag_offsets": offsets.bag_char2,
+        "chest_item_offsets": offsets.item_chest2,
+        "equip_item_offsets": offsets.equip_chest2
+    },
+    {
+        "name_offset": offsets.name_char3,
+        "sex_offset": offsets.sex_char3,
+        "money_offset": offsets.money_char3,
+        "bag_offsets": offsets.bag_char3,
+        "chest_item_offsets": offsets.item_chest3,
+        "equip_item_offsets": offsets.equip_chest3
+    },
 ]
 
-id_file = os.path.join(cwd, "data/data_id.json")
-save_paths = [
-    os.path.join(cwd, "savedata/character1.sav"),
-    os.path.join(cwd, "savedata/character2.sav"),
-    os.path.join(cwd, "savedata/character3.sav")
+characters = [
+    offsets.Character(
+        offsets.save_path,
+        char_data["bag_offsets"],
+        char_data["chest_item_offsets"],
+        char_data["equip_item_offsets"],
+        offsets.id_file
+    )
+    for char_data in characters_data
 ]
 
-# Reading data functions
-def read_name(character, offset, size):
-    character.seek(offset)
-    raw_data = character.read(size)
-    name = "".join(s for s in raw_data.decode("ascii") if s.isprintable())
-    return name.strip("\x00")
+loaded_characters = []
+for idx, (char, char_data) in enumerate(zip(characters, characters_data), start=1):
+    char.load_file()
+    name = char.read_name(char_data["name_offset"], 16)
+    if name:
+        sex = char.read_2byte(char_data["sex_offset"], 2)
+        bag = char.read_bag()
+        item_inventory = char.read_item_chest()
+        equip_inventory = char.read_equip_chest()
+        money = char.read_4byte(char_data["money_offset"], 4)
+        loaded_characters.append({
+            "character": char,
+            "name": name,
+            "sex": sex,
+            "money": money,
+            "money_offset": char_data["money_offset"],
+            "bag": bag,
+            "item_inventory": item_inventory,
+            "equip_inventory": equip_inventory
+        })
 
-def read_2byte(character, offset, size):
-    character.seek(offset)
-    raw_data = character.read(size)
-    return struct.unpack("<H", raw_data)[0]
+def update_dropdown(event, dropdown, original_values):
+    typed = dropdown.get().lower()
+    filtered = [v for v in original_values if typed in v.lower()]
+    dropdown['values'] = filtered
 
-def read_4byte(character, offset, size):
-    character.seek(offset)
-    raw_data = character.read(size)
-    return struct.unpack("<L", raw_data)[0]
-
-def bag_items(character, slot_offset, quantity_offset):
-    item_slot = read_2byte(character, slot_offset, 2)
-    item_quantity = read_2byte(character, quantity_offset, 2)
-    return item_slot, item_quantity
-
-def load_data(save_path):
-    try:
-        with open(save_path, "rb") as character, open(id_file, "r") as items:
-            items_dict = json.load(items)
-            db = dict(sorted(items_dict["items"].items(), key=lambda item: item[1]))
-            name = read_name(character, name_offset, 16)
-            if not name:
-                return None
-            sex = read_2byte(character, sex_offset, 2)
-            money = read_4byte(character, money_offset, 4)
-            data = []
-            for i, (slot_offset, quantity_offset) in enumerate(bag_offsets, start=1):
-                slot_item, slot_quantity = bag_items(character, slot_offset, quantity_offset)
-                item_name = items_dict["items"].get(str(slot_item))
-                data.append({"Slot": i, "Name": item_name, "Quantity": slot_quantity})
-            return db, name, sex, money, data
-    except FileNotFoundError:
-        return None
-
-def handle_double_click(event, tree, save_path, db):
-    # Identify selected row and clumn
-    item_id = tree.identify_row(event.y)
-    column_id = tree.identify_column(event.x)
-
-    if not item_id:
-        return  # No selected row
-
-    if column_id == "#2":  # Column "Name"
-        current_values = tree.item(item_id, "values")
-        slot_index = int(current_values[0]) - 1
-
-        # Dropdown menu
-        edit_window = create_edit_window()
-        tk.Label(edit_window, text="Choose new item:").pack(pady=5)
-
-        selected_id = tk.StringVar()
-        dropdown = create_dropdown(db, edit_window, selected_id)
-        dropdown.bind("<KeyRelease>", lambda event: update_dropdown(event, dropdown, db))
-
-        tk.Button(
-            edit_window,
-            text="Confirm",
-            command=lambda: confirm_edit_item(dropdown, db, save_path, slot_index, tree, edit_window)
-        ).pack(pady=10)
-
-    elif column_id == "#3":  # Clumn "Quantity"
-        current_values = tree.item(item_id, "values")
-        slot_index = int(current_values[0]) - 1
-        new_quantity = simpledialog.askinteger(
-            "Edit Quantity",
-            "Enter new quantity (1-99):",
-            minvalue=1,
-            maxvalue=99
-        )
-        if new_quantity is not None:
-            update_quantity_in_table(tree, save_path, db, slot_index, new_quantity)
-
-# Functions for edit items/quantity
 def create_edit_window():
     edit_window = tk.Toplevel(root)
-    edit_window.iconbitmap(os.path.join(cwd, "data/clipboard.ico"))
     edit_window.title("Edit Item")
+    edit_window.iconbitmap(os.path.join(cwd, "data/icon.ico"))
+    edit_window.grab_set()
     return edit_window
 
-def create_dropdown(db, parent, selected_id):
-    dropdown = ttk.Combobox(parent, textvariable=selected_id, values=list(db.values()), state="normal")
-    dropdown.config(width=50)
-    dropdown.pack(pady=5)
-    return dropdown
+def create_inventory_tree(parent_frame, label_text, inventory_data, columns, shared_db, inventory_type, character, all_equip_index=None):
+    inventory_frame = tk.Frame(parent_frame)
+    tk.Label(inventory_frame, text=label_text, font=("Arial", 12, "bold")).pack(pady=2)
+    
+    tree_frame = tk.Frame(inventory_frame)
+    tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=8)
+    for col in columns:
+        tree.heading(col, text=col)
+    
+    if inventory_type in ("item", "equip"):
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+    else:
+        tree.pack(fill="both", expand=True)
+    
+    tree_frame.pack(fill="both", padx=5)
+    
+    for item in inventory_data:
+        values = [item[column] for column in columns]
+        tree.insert("", "end", values=values)
+    
+    tree.character = character
+    tree.inventory_type = inventory_type
+    tree.bind("<Double-1>", lambda event: handle_double_click(event, tree, shared_db, all_equip_index))
+    return inventory_frame
 
-def update_dropdown(event, dropdown, db):
-    value = dropdown.get().lower()
-    filtered_items = [item for item in db.values() if value in item.lower()]
-    dropdown.config(values=filtered_items)
+def create_character_frame(character_data, parent_frame):
+    frame = tk.Frame(parent_frame, borderwidth=2, relief="solid")
+    frame.pack(side="top", pady=10, fill="x")
+    tk.Label(frame, text=f"Name: {character_data['name']}", font=("Arial", 14)).pack(pady=2)
+    tk.Label(frame, text=f"Sex: {'Male' if character_data['sex'] == 1 else 'Female'}", font=("Arial", 14)).pack(pady=2)
+    money_label = tk.Label(frame, text=f"Money: {character_data['money']}z", font=("Arial", 14))
+    money_label.pack(pady=2)
+    tk.Button(frame, text="Add Max Money", command=lambda: add_max_money(character_data["character"].file_path, character_data["money_offset"], money_label)).pack(pady=5)
+    inventories_frame = tk.Frame(frame)
+    inventories_frame.pack(side="top", fill="x")
+    bag_tree = create_inventory_tree(
+        inventories_frame, "Bag Items", character_data["bag"],
+        ["Slot", "Name", "Quantity"], offsets.Character.shared_db,
+        inventory_type="bag", character=character_data["character"]
+    )
+    bag_tree.pack(side="left", padx=5, fill="y")
+    item_tree = create_inventory_tree(
+        inventories_frame, "Item Inventory", character_data["item_inventory"],
+        ["Slot", "Name", "Quantity"], offsets.Character.shared_db,
+        inventory_type="item", character=character_data["character"]
+    )
+    item_tree.pack(side="left", padx=5, fill="y")
+    equip_tree = create_inventory_tree(
+        inventories_frame, "Equip Inventory", character_data["equip_inventory"],
+        ["Slot", "Type", "Name"], offsets.Character.shared_db,
+        inventory_type="equip", character=character_data["character"],
+        all_equip_index=offsets.all_equip_index
+    )
+    equip_tree.pack(side="left", padx=5, fill="y")
 
-def confirm_edit_item(dropdown, db, save_path, slot_index, tree, edit_window):
-    chosen_item = dropdown.get()
-    if chosen_item:
-        item_id = next((key for key, value in db.items() if value == chosen_item), None)
-        
-        edit_item_in_file(save_path, slot_index, item_id, db, tree) 
-        edit_window.destroy()
-
-def edit_item_in_file(save_path, slot_index, selected_id, db, tree):
-    slot_offset, _ = bag_offsets[slot_index]
+def handle_double_click(event, tree, shared_db, all_equip_index=None):
+    item_id = tree.identify_row(event.y)
+    column_id = tree.identify_column(event.x)
+    if not item_id or not tree.exists(item_id):
+        messagebox.showerror("Error", "Selected item not found.")
+        return
+    current_values = tree.item(item_id, "values")
     try:
-        with open(save_path, "r+b") as character:
-            character.seek(slot_offset)
-            character.write(struct.pack("<H", int(selected_id)))
+        slot_index = int(current_values[0]) - 1
+    except (ValueError, IndexError):
+        messagebox.showerror("Error", "Invalid slot value.")
+        return
+    if tree.inventory_type in ("bag", "item"):
+        if column_id == "#3":
+            new_quantity = simpledialog.askinteger("Edit Quantity", "Enter new quantity (1-99):", minvalue=1, maxvalue=99)
+            if new_quantity is not None:
+                update_quantity_in_table(tree, slot_index, new_quantity)
+        elif column_id == "#2":
+            edit_window = create_edit_window()
+            tk.Label(edit_window, text="Choose new item:").pack(pady=5)
+            selected_name = tk.StringVar()
+            original_items = list(shared_db["items"].values())
+            name_dropdown = ttk.Combobox(edit_window, textvariable=selected_name, values=original_items)
+            name_dropdown.pack(pady=5)
+            name_dropdown.bind('<KeyRelease>', lambda e: update_dropdown(e, name_dropdown, original_items))
+            tk.Button(edit_window, text="Confirm", command=lambda: 
+                      confirm_edit_item(name_dropdown.get(), tree, item_id, slot_index, shared_db, edit_window)
+            ).pack(pady=10)
+    elif tree.inventory_type == "equip":
+        if column_id == "#2":
+            edit_window = create_edit_window()
+            tk.Label(edit_window, text="Choose new type:").pack(pady=5)
+            selected_type = tk.StringVar()
+            original_types = list(all_equip_index.keys())
+            type_dropdown = ttk.Combobox(edit_window, textvariable=selected_type, values=original_types)
+            type_dropdown.pack(pady=5)
+            type_dropdown.bind('<KeyRelease>', lambda e: update_dropdown(e, type_dropdown, original_types))
+            tk.Button(edit_window, text="Confirm", command=lambda: 
+                      confirm_edit_type(selected_type.get(), tree, item_id, slot_index, shared_db, edit_window)
+            ).pack(pady=10)
+        elif column_id == "#3":
+            edit_window = create_edit_window()
+            tk.Label(edit_window, text="Choose new equip:").pack(pady=5)
+            selected_name = tk.StringVar()
+            current_type = current_values[1]
+            original_equips = list(shared_db[current_type].values())
+            name_dropdown = ttk.Combobox(edit_window, textvariable=selected_name, values=original_equips)
+            name_dropdown.pack(pady=5)
+            name_dropdown.bind('<KeyRelease>', lambda e: update_dropdown(e, name_dropdown, original_equips))
+            tk.Button(edit_window, text="Confirm", command=lambda: 
+                      confirm_edit_name(name_dropdown.get(), current_type, tree, item_id, slot_index, shared_db, edit_window)
+            ).pack(pady=10)
 
-        # Update table
-        tree.item(tree.get_children()[slot_index], values=(slot_index + 1, db[selected_id], tree.item(tree.get_children()[slot_index], "values")[2]))
-        messagebox.showinfo("Success", "Item updated successfully!")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to update item: {e}")
+def create_edit_window():
+    edit_window = tk.Toplevel(root)
+    edit_window.title("Edit Item")
+    edit_window.grab_set()
+    return edit_window
 
-def update_quantity_in_table(tree, save_path, db, slot_index, new_quantity):
-    new_quantity = min(new_quantity, 99)  # Max 99
-    slot_offset, quantity_offset = bag_offsets[slot_index]
+def update_quantity_in_table(tree, slot_index, new_quantity):
+    char = tree.character
+    inv_type = tree.inventory_type
+    if inv_type == "bag":
+        offset_tuple = char.bag_offsets[slot_index]
+    elif inv_type == "item":
+        offset_tuple = char.item_chest_offsets[slot_index]
+    else:
+        messagebox.showerror("Error", "Invalid inventory type for quantity update.")
+        return
+
+    quantity_offset = int(offset_tuple[1], 16) if isinstance(offset_tuple[1], str) else offset_tuple[1]
     try:
-        with open(save_path, "r+b") as character:
-            character.seek(quantity_offset)
-            character.write(struct.pack("<H", new_quantity))
-
-        # Update table
-        item = tree.get_children()[slot_index]
-        item_values = list(tree.item(item, "values"))
+        item_values = list(tree.item(tree.get_children()[slot_index], "values"))
         item_values[2] = new_quantity
-        tree.item(item, values=item_values)
-
+        tree.item(tree.get_children()[slot_index], values=item_values)
+        with open(char.file_path, "r+b") as f:
+            f.seek(quantity_offset)
+            f.write(struct.pack("<H", new_quantity))
         messagebox.showinfo("Success", "Quantity updated successfully!")
+    except IndexError:
+        messagebox.showerror("Error", "Invalid slot index.")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to update quantity: {e}")
 
-# Characters functions
-def create_character_frame(save_path, parent_frame):
-    character_data = load_data(save_path)
-    if character_data:
-        db, name, sex, money, data = character_data
+def confirm_edit_item(new_name, tree, row_id, slot_index, shared_db, edit_window):
+    char = tree.character
+    inv_type = tree.inventory_type
+    if inv_type == "bag":
+        offset_tuple = char.bag_offsets[slot_index]
+    elif inv_type == "item":
+        offset_tuple = char.item_chest_offsets[slot_index]
+    else:
+        messagebox.showerror("Error", "Invalid inventory type for item update.")
+        edit_window.destroy()
+        return
 
-        frame = tk.Frame(parent_frame, borderwidth=2, relief="solid")
-        frame.pack(side="top", pady=10, fill="x")
-
-        tk.Label(frame, text=f"Name: {name}", font=("Arial", 14)).pack(pady=2)
-        tk.Label(frame, text=f"Sex: {'Male' if sex == 1 else 'Female'}", font=("Arial", 14)).pack(pady=2)
-        money_label = tk.Label(frame, text=f"Money: {money}z", font=("Arial", 14))
-        money_label.pack(pady=2)
-
-        tk.Button(frame, text="Add Max Money", command=lambda: add_max_money(save_path, money_label)).pack(pady=5)
-
-        tree = ttk.Treeview(frame, columns=("Slot", "Name", "Quantity"), show="headings", height=8)
-        tree.heading("Slot", text="Slot")
-        tree.heading("Name", text="Name")
-        tree.heading("Quantity", text="Quantity")
-        tree.pack(pady=5)
-
-        for item in data:
-            tree.insert("", "end", values=(item["Slot"], item["Name"], item["Quantity"]))
-
-        # Double click name/quantity
-        tree.bind("<Double-1>", lambda event: handle_double_click(event, tree, save_path, db))
-
-def add_max_money(save_path, money_label):
+    slot_offset = int(offset_tuple[0], 16) if isinstance(offset_tuple[0], str) else offset_tuple[0]
+    item_id = next((key for key, value in shared_db["items"].items() if value == new_name), None)
+    if not item_id:
+        messagebox.showerror("Error", "Invalid item selected.")
+        edit_window.destroy()
+        return
     try:
-        with open(save_path, "r+b") as character:
-            character.seek(money_offset)
-            money_quantity = struct.pack("<L", 9999999)
-            character.write(money_quantity)
+        item_values = list(tree.item(row_id, "values"))
+        item_values[1] = new_name
+        tree.item(row_id, values=item_values)
+        with open(char.file_path, "r+b") as f:
+            f.seek(slot_offset)
+            f.write(struct.pack("<H", int(item_id)))
+        messagebox.showinfo("Success", f"Item updated to {new_name}.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to update item: {e}")
+    edit_window.destroy()
+
+def confirm_edit_type(new_type, tree, row_id, slot_index, shared_db, edit_window):
+    char = tree.character
+    if tree.inventory_type != "equip":
+        messagebox.showerror("Error", "Invalid inventory type for type update.")
+        edit_window.destroy()
+        return
+
+    offset_tuple = char.equip_chest_offsets[slot_index]
+    slot_offset = int(offset_tuple[0], 16) if isinstance(offset_tuple[0], str) else offset_tuple[0]
+    
+    hex_value = offsets.all_equip_index.get(new_type)
+    if not hex_value:
+        messagebox.showerror("Error", "Invalid equipment type selected.")
+        edit_window.destroy()
+        return
+
+    try:
+        item_values = list(tree.item(row_id, "values"))
+        item_values[1] = new_type
+        tree.item(row_id, values=item_values)
+        
+        with open(char.file_path, "r+b") as f:
+            f.seek(slot_offset)
+            f.write(bytes.fromhex(hex_value))
+            
+        messagebox.showinfo("Success", f"Type updated to {new_type}.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to update type: {e}")
+    finally:
+        edit_window.destroy()
+
+def confirm_edit_name(new_name, current_type, tree, row_id, slot_index, shared_db, edit_window):
+    char = tree.character
+    if tree.inventory_type != "equip":
+        messagebox.showerror("Error", "Invalid inventory type for name update.")
+        edit_window.destroy()
+        return
+    offset_tuple = char.equip_chest_offsets[slot_index]
+    name_offset = int(offset_tuple[1], 16) if isinstance(offset_tuple[1], str) else offset_tuple[1]
+    equip_id = next((key for key, value in shared_db[current_type].items() if value == new_name), None)
+    if equip_id is None:
+        messagebox.showerror("Error", "Invalid equipment name selected.")
+        edit_window.destroy()
+        return
+    try:
+        item_values = list(tree.item(row_id, "values"))
+        item_values[2] = new_name
+        tree.item(row_id, values=item_values)
+        with open(char.file_path, "r+b") as f:
+            f.seek(name_offset)
+            f.write(struct.pack("<H", int(equip_id)))
+        messagebox.showinfo("Success", f"Name updated to {new_name} (Type: {current_type}).")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to update name: {e}")
+    edit_window.destroy()
+
+def add_max_money(save_path, money_offset, money_label):
+    try:
+        with open(save_path, "r+b") as f:
+            f.seek(money_offset)
+            f.write(struct.pack("<L", 9999999))
         money_label.config(text="Money: 9999999z")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to add money: {e}")
@@ -206,44 +320,35 @@ def add_max_money(save_path, money_label):
 def save_changes_action():
     response = messagebox.askyesno("Confirm", "Do you want to save changes?")
     if response:
-        open(os.path.join(cwd, "modifications_done.flag"), "w").write("done")
+        try:
+            with open(os.path.join(cwd, "modifications_done.flag"), "w") as file:
+                file.write("done")
+            messagebox.showinfo("Success", "Changes saved successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save changes: {e}")
         root.destroy()
 
 def main():
     root.title("MHFU Savefile Editor")
-    
-    # Edit icon
-    root.iconbitmap(os.path.join(cwd, "data/clipboard.ico"))
-
-    # Scrollbar canvas
+    root.iconbitmap(os.path.join(cwd, "data/icon.ico"))
     main_frame = tk.Frame(root)
     main_frame.pack(fill="both", expand=True)
-
     canvas = tk.Canvas(main_frame)
     scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
     scrollable_frame = tk.Frame(canvas)
-
-    # Link scroll to canvas
-    scrollable_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
-
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
-
-    # Title and save changes button
     tk.Label(scrollable_frame, text="MHFU Savefile Editor", font=("Arial", 20, "bold")).pack(pady=10)
     tk.Button(scrollable_frame, text="Save Changes", command=save_changes_action).pack(pady=10)
-
-    # Creating character frame for every character
-    for save_path in save_paths:
-        create_character_frame(save_path, scrollable_frame)
-
+    for character_data in loaded_characters:
+        create_character_frame(character_data, scrollable_frame)
     root.update_idletasks()
-    canvas_width = scrollable_frame.winfo_reqwidth() + scrollbar.winfo_width() + 20
+    canvas_width = scrollable_frame.winfo_reqwidth() + scrollbar.winfo_width() + 5
     root.geometry(f"{canvas_width}x800")
-
     root.mainloop()
+
+if __name__ == "__main__":
+    main()
