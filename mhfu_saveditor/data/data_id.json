@@ -1262,7 +1262,7 @@
     "1259": "Rathalos Fly",
     "1260": "Embroidered Flag"
     },
-    "melee_weapons" : {
+    "Melee_Weapon" : {
         "0": "-----",
         "1": "Carbalite Sword",
         "2": "Carbalite Sword+",
@@ -2414,7 +2414,7 @@
         "1148": "Ms. M.H. Puppet",
         "1149": "Great Kris"
     },
-    "ranged_weapons" : {
+    "Ranged_Weapon" : {
         "0": "-----",
         "1": "Shooter's Barrel",
         "2": "Chain Blitz",
@@ -2770,7 +2770,7 @@
         "352": "Pirate J Cannon",
         "353": "Diasorte Arrow"
     },
-    "heads": {
+    "Helmet": {
     "0": "-----",
     "1": "Leather Helm",
     "2": "Chain Helm",
@@ -3208,7 +3208,7 @@
     "434": "Comrade Piercing",
     "435": "Hawkeye Piercing"
     },
-    "torso": {
+    "Plate": {
     "0": "-----",
     "1": "Leather Armor",
     "2": "Chain Mail",
@@ -3630,7 +3630,7 @@
     "418": "Lava Mail",
     "419": "Lava Vest"
     },
-    "hands": {
+    "Gauntlets": {
     "0": "-----",
     "1": "Leather Vambraces",
     "2": "Chain Vambraces",
@@ -4043,7 +4043,7 @@
     "409": "Lava Vambraces",
     "410": "Lava Guards"
     },
-    "belt": {
+    "Waist": {
     "0": "-----",
     "1": "Leather Belt",
     "2": "Light Belt",
@@ -4454,7 +4454,7 @@
     "407": "Lava Tasset",
     "408": "Lava Coat"
     },
-    "legs": {
+    "Leggins": {
     "0": "-----",
     "1": "Green Pants",
     "2": "Blue Pants",
