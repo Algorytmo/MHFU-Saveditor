@@ -8,6 +8,7 @@ This project is a save editor for Monster Hunter Portable 2nd G, designed to all
 - Download and extract the main folder;
 - Copy the folder named **mhfu_saveditor** wherever you want;
 - Put your savedata folder inside (ULES01213/ULUS10391/ULJM05500) and launch the .exe;
+**PLEASE ALWAYS MAKE A BACKUP OF YOUR SAVEDATA**
 
 ![image](https://github.com/user-attachments/assets/14024f60-34af-483d-b7ef-288d5179fb2b)
 
