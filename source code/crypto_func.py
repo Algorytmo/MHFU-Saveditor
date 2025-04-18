@@ -117,3 +117,45 @@ def psp_encryption():
     else:
         print("Unknown save file size. Cannot proceed.")
         return False
+
+def merge_sav_files():
+    try:
+        with open(os.path.join(output_folder, "character1.sav"), "rb") as f1, open(os.path.join(output_folder, "character2.sav"), "rb") as f2, open(os.path.join(output_folder, "character3.sav"), "rb") as f3:
+            data1 = f1.read()
+            data2 = f2.read()
+            data3 = f3.read()
+
+        with open(os.path.join(cwd, "save.BIN"), "wb") as out:
+            out.write(data1)
+            out.write(data2)
+            out.write(data3)
+
+        print("Files merged successfully")
+        return True
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return False
+
+def split_merged_sav():
+    try:
+        output_files = [os.path.join(output_folder, "character1.sav"), os.path.join(output_folder, "character2.sav"), os.path.join(output_folder, "character3.sav")]
+        offsets = [0x0, 0x6b100, 0xd6200]
+        sizes = [0x6b100, 0x6b100, 0x6b100]
+
+        for i in output_files:
+            os.remove(i)
+
+        with open(os.path.join(cwd, "save.BIN"), "rb") as f:
+            merged_data = f.read()
+
+        for output_file, offset, size in zip(output_files, offsets, sizes):
+            with open(output_file, "wb") as out:
+                out.write(merged_data[offset:offset + size])
+            print(f"Extracted {output_file} from offset {offset} with size {size} bytes")
+
+        print("Split completed successfully!")
+        os.remove(os.path.join(cwd, "save.BIN"))
+        return True
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return False
